@@ -1,0 +1,852 @@
+<!--
+  Job Search Tracker - Flask/MySQL application for tracking job applications,
+  detecting recruiter ghosting patterns and generating JSA evidence reports.
+  Copyright (C) 2026  Pauline A Harrison
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+  Contact: info@KernEthik.com
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Search Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Fraunces:opsz,wght@9..144,300;9..144,600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #0d0f14;
+  --surface:   #141720;
+  --surface2:  #1c2230;
+  --border:    #252d42;
+  --navy:      #1B2A4A;
+  --teal:      #2E7D6B;
+  --accent:    #4fd9b0;
+  --amber:     #f5a623;
+  --red:       #e05a5a;
+  --text:      #e8ecf4;
+  --muted:     #7a8099;
+  --font-mono: 'DM Mono', monospace;
+  --font-head: 'Fraunces', serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 13px; min-height: 100vh; }
+
+/* ── NAV ───────────────────────────────────────────────────── */
+nav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 0;
+  padding: 0 24px; height: 56px; position: sticky; top: 0; z-index: 100;
+}
+.nav-brand { font-family: var(--font-head); font-size: 18px; color: var(--accent); font-weight: 600; margin-right: 32px; white-space: nowrap; }
+.nav-tabs { display: flex; gap: 0; flex: 1; }
+.nav-tab {
+  padding: 0 20px; height: 56px; display: flex; align-items: center;
+  cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent;
+  transition: color .2s, border-color .2s; font-size: 12px; letter-spacing: .05em;
+  text-transform: uppercase; white-space: nowrap;
+}
+.nav-tab:hover { color: var(--text); }
+.nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface2); border-radius: 10px; padding: 1px 7px;
+  font-size: 10px; margin-left: 6px; color: var(--muted);
+}
+
+/* ── LAYOUT ────────────────────────────────────────────────── */
+main { padding: 24px; max-width: 1600px; margin: 0 auto; }
+.view { display: none; }
+.view.active { display: block; }
+
+/* ── STAT CARDS ────────────────────────────────────────────── */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px 20px;
+}
+.stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+.stat-value { font-family: var(--font-head); font-size: 32px; font-weight: 600; color: var(--accent); line-height: 1; }
+.stat-value.amber { color: var(--amber); }
+.stat-value.red   { color: var(--red); }
+.stat-value.teal  { color: #4fd9b0; }
+
+/* ── CHARTS ────────────────────────────────────────────────── */
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; }
+.chart-title { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 12px; }
+.bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; }
+.bar-label { width: 160px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-track { flex: 1; background: var(--surface2); border-radius: 3px; height: 8px; }
+.bar-fill { height: 8px; border-radius: 3px; background: var(--accent); transition: width .5s; }
+.bar-count { color: var(--muted); width: 28px; text-align: right; }
+
+/* ── TOOLBAR ────────────────────────────────────────────────── */
+.toolbar { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; flex-wrap: wrap; }
+.search-box {
+  flex: 1; min-width: 200px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 12px; color: var(--text); font-family: var(--font-mono);
+  font-size: 12px; outline: none; transition: border-color .2s;
+}
+.search-box:focus { border-color: var(--accent); }
+.search-box::placeholder { color: var(--muted); }
+select.filter-sel {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 10px; color: var(--text); font-family: var(--font-mono); font-size: 12px;
+  outline: none; cursor: pointer; min-width: 120px;
+}
+select.filter-sel:focus { border-color: var(--accent); }
+.btn {
+  padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer;
+  font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+  transition: opacity .2s, transform .1s; white-space: nowrap;
+}
+.btn:hover { opacity: .85; }
+.btn:active { transform: scale(.97); }
+.btn-primary { background: var(--accent); color: #0d0f14; }
+.btn-danger  { background: var(--red); color: #fff; }
+.btn-ghost   { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-teal    { background: var(--teal); color: #fff; }
+
+/* ── TABLE ─────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th {
+  background: var(--surface); padding: 10px 12px; text-align: left;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--muted); border-bottom: 1px solid var(--border);
+  white-space: nowrap; position: sticky; top: 0; z-index: 10;
+}
+tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
+tbody tr:hover { background: var(--surface2); }
+tbody td { padding: 9px 12px; vertical-align: middle; }
+.td-role { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-company { font-weight: 500; color: var(--accent); white-space: nowrap; }
+.td-actions { display: flex; gap: 6px; min-width: 100px; }
+.icon-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 4px; font-size: 14px; transition: color .2s; }
+.icon-btn:hover { color: var(--text); }
+.icon-btn.del:hover { color: var(--red); }
+
+/* ── STATUS BADGES ─────────────────────────────────────────── */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 500; white-space: nowrap; }
+.badge-applied   { background: #1a3a5c; color: #5aaff5; }
+.badge-warm      { background: #1a3a2a; color: #5af5a0; }
+.sortable-col { cursor: pointer; user-select: none; white-space: nowrap; }
+.sortable-col:hover { color: var(--teal); }
+.badge-recruiter { background: #2a2a1a; color: #f5d05a; }
+.badge-rc-prog   { background: #1a2a3a; color: #4fd9b0; border: 1px solid #2E7D6B; }
+.badge-rc-info   { background: #2a1a3a; color: #b070f5; border: 1px solid #6a306a; }
+.badge-rejected  { background: #3a1a1a; color: #f55a5a; }
+.badge-offer     { background: #1a3a1a; color: #5af55a; border: 1px solid #2E7D2E; }
+.badge-interview { background: #1a2a3a; color: #9370f5; }
+.badge-default   { background: var(--surface2); color: var(--muted); }
+.badge-noresponse { background: #2a1a2a; color: #d070d0; border: 1px solid #6a306a; }
+
+/* ── PAGINATION ─────────────────────────────────────────────── */
+.pagination { display: flex; gap: 4px; margin-top: 14px; align-items: center; }
+.page-info { color: var(--muted); font-size: 11px; flex: 1; }
+.page-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 5px 11px; cursor: pointer; font-size: 12px; transition: background .2s; }
+.page-btn:hover { background: var(--surface); }
+.page-btn.active { background: var(--accent); color: #0d0f14; border-color: var(--accent); }
+.page-btn:disabled { opacity: .35; cursor: default; }
+
+/* ── MODAL ──────────────────────────────────────────────────── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+  z-index: 200; align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 28px; width: 680px; max-width: 95vw;
+  max-height: 90vh; overflow-y: auto;
+}
+.modal-title { font-family: var(--font-head); font-size: 18px; color: var(--accent); margin-bottom: 20px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-group.full { grid-column: 1 / -1; }
+label { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+input, select, textarea {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px; color: var(--text);
+  font-family: var(--font-mono); font-size: 12px; outline: none;
+  transition: border-color .2s; width: 100%;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+textarea { resize: vertical; min-height: 70px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+/* ── JSA VIEW ───────────────────────────────────────────────── */
+.jsa-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.jsa-meta { display: flex; gap: 10px; flex-wrap: wrap; }
+.jsa-meta input { min-width: 180px; }
+.jsa-week-count { color: var(--muted); font-size: 11px; margin-left: auto; }
+
+/* ── RECRUITER TABLE ────────────────────────────────────────── */
+.risk-vh { color: #f55a5a; font-weight: 600; }
+.risk-h  { color: var(--amber); font-weight: 600; }
+.risk-m  { color: #f5d05a; }
+.risk-l  { color: var(--accent); }
+
+/* ── TOAST ──────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px;
+  font-size: 12px; z-index: 500; transform: translateY(80px); opacity: 0;
+  transition: transform .3s, opacity .3s; max-width: 320px;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.success { border-color: var(--accent); color: var(--accent); }
+.toast.error   { border-color: var(--red); color: var(--red); }
+
+/* ── EMPTY STATE ────────────────────────────────────────────── */
+.empty { text-align: center; padding: 60px; color: var(--muted); }
+.empty-icon { font-size: 40px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand">JST</div>
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="showView('dashboard')">Dashboard</div>
+    <div class="nav-tab" onclick="showView('applications')">Applications <span class="nav-badge" id="badge-total">0</span></div>
+    <div class="nav-tab" onclick="showView('recruiters')">Recruiters</div>
+    <div class="nav-tab" onclick="showView('jsa')">JSA Evidence</div>
+  </div>
+</nav>
+
+<main>
+
+<!-- ══ DASHBOARD ═══════════════════════════════════════════════════════ -->
+<div class="view active" id="view-dashboard">
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card"><div class="stat-label">Total Applied</div><div class="stat-value" id="s-total">—</div></div>
+    <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value teal" id="s-pending">—</div></div>
+    <div class="stat-card"><div class="stat-label">Rejections</div><div class="stat-value red" id="s-rejected">—</div></div>
+    <div class="stat-card"><div class="stat-label">Interviews</div><div class="stat-value amber" id="s-interviews">—</div></div>
+    <div class="stat-card"><div class="stat-label">Likely Ghosted</div><div class="stat-value red" id="s-ghosted">—</div></div>
+    <div class="stat-card"><div class="stat-label">Fake Adverts</div><div class="stat-value amber" id="s-fake">—</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Response (days)</div><div class="stat-value teal" id="s-avgdays">—</div></div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px">
+    <button class="btn btn-ghost" onclick="runGhostCheck()" style="font-size:11px;border-color:var(--muted)">
+      &#128123; Run Ghost Check
+    </button>
+  </div>
+  <div class="charts-grid">
+    <div class="chart-card"><div class="chart-title">By Status</div><div id="chart-status"></div></div>
+    <div class="chart-card"><div class="chart-title">By Source</div><div id="chart-source"></div></div>
+    <div class="chart-card"><div class="chart-title">Applications Per Week</div><div id="chart-week"></div></div>
+  </div>
+</div>
+
+<!-- ══ APPLICATIONS ════════════════════════════════════════════════════ -->
+<div class="view" id="view-applications">
+  <div class="toolbar">
+    <input class="search-box" id="search-input" placeholder="Search company, role, contact..." oninput="debounceSearch()">
+    <select class="filter-sel" id="filter-status" onchange="loadApplications()"><option value="">All Statuses</option></select>
+    <select class="filter-sel" id="filter-source" onchange="loadApplications()"><option value="">All Sources</option></select>
+    <select class="filter-sel" id="filter-loc" onchange="loadApplications()"><option value="">All Locations</option></select>
+    <button class="btn btn-primary" onclick="openAddModal()">+ Add Application</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>URN</th><th>Date</th><th>Company</th><th>Role</th>
+          <th>Source</th><th>Status</th><th>Location</th><th>Salary</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="apps-tbody"></tbody>
+    </table>
+  </div>
+  <div class="pagination">
+    <div class="page-info" id="page-info"></div>
+    <button class="page-btn" id="btn-prev" onclick="changePage(-1)">&#8249; Prev</button>
+    <button class="page-btn" id="btn-next" onclick="changePage(1)">Next &#8250;</button>
+  </div>
+</div>
+
+<!-- ══ RECRUITERS ═══════════════════════════════════════════════════════ -->
+<div class="view" id="view-recruiters">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Company</th><th>Total Apps</th><th>Responses</th><th>Response Rate</th><th>Avg Response (days)</th>
+          <th class="sortable-col" onclick="sortRecruiters('ghosted_count')" title="Click to sort">Ghosted <span id="sort-ghosted">&#8597;</span></th>
+          <th class="sortable-col" onclick="sortRecruiters('ghost_risk_rating')" title="Click to sort">Ghost Risk <span id="sort-risk">&#8597;</span></th>
+        </tr>
+      </thead>
+      <tbody id="rec-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══ JSA EVIDENCE ════════════════════════════════════════════════════ -->
+<div class="view" id="view-jsa">
+  <div class="jsa-toolbar">
+    <div class="jsa-meta">
+      <input id="jsa-claimant" placeholder="Claimant Name" style="min-width:200px">
+      <input id="jsa-ni" placeholder="NI Number" style="min-width:140px">
+    </div>
+    <select class="filter-sel" id="jsa-week" onchange="loadJSA()" style="min-width:160px">
+      <option value="">All Weeks</option>
+    </select>
+    <button class="btn btn-teal" onclick="downloadJSAPDF()">&#8595; Download PDF</button>
+    <div class="jsa-week-count" id="jsa-count"></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Week</th><th>Date</th><th>Employer</th><th>Role</th>
+          <th>Source</th><th>Contact</th><th>Status</th><th>Evidence</th>
+        </tr>
+      </thead>
+      <tbody id="jsa-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+</main>
+
+<!-- ══ MODAL ════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title" id="modal-title">Add Application</div>
+    <input type="hidden" id="edit-id">
+    <div class="form-grid">
+      <div class="form-group"><label>Date Applied *</label><input type="date" id="f-date"></div>
+      <div class="form-group"><label>Source</label>
+        <select id="f-source">
+          <option value="">— Select —</option>
+          <option>LinkedIn</option><option>Indeed</option>
+          <option>CV-Library</option><option>TotalJobs</option>
+          <option>Company Website</option><option>Referral</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group full"><label>Company / Employer *</label><input type="text" id="f-company" placeholder="e.g. Anthropic"></div>
+      <div class="form-group full"><label>Role Title *</label><input type="text" id="f-role" placeholder="e.g. AI Governance Lead"></div>
+      <div class="form-group full"><label>Job URL</label><input type="url" id="f-url" placeholder="https://..."></div>
+      <div class="form-group"><label>Contact Name</label><input type="text" id="f-contact-name"></div>
+      <div class="form-group"><label>Contact Email / Phone</label><input type="text" id="f-contact-email"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="f-status">
+          <option>Applied</option>
+          <option>Applied - Warm Contact</option>
+          <option>Applied via recruiter</option>
+          <option>Recruiter Call - Progressing</option>
+          <option>Recruiter Call - Further Info Req</option>
+          <option>Interview Booked</option>
+          <option>2nd Interview</option>
+          <option>Rejected</option>
+          <option>Offer</option>
+          <option>Withdrawn</option>
+          <option>Ghosted</option>
+          <option>No Response</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Outcome Date</label><input type="date" id="f-outcome-date"></div>
+      <div class="form-group"><label>Interview 1 Date</label><input type="date" id="f-int1"></div>
+      <div class="form-group"><label>Interview 2 Date</label><input type="date" id="f-int2"></div>
+      <div class="form-group"><label>Salary</label><input type="text" id="f-salary" placeholder="e.g. 95000 or Not Stated"></div>
+      <div class="form-group"><label>Location Type</label>
+        <select id="f-loc">
+          <option value="">— Select —</option>
+          <option>Fully Remote</option><option>Remote UK</option>
+          <option>Mainly Remote</option><option>Hybrid</option>
+          <option>Hybrid London</option><option>Hybrid Manchester</option>
+          <option>Hybrid South East</option><option>Onsite</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Ghost Score (0-5)</label><input type="number" id="f-ghost" min="0" max="5" value="0"></div>
+      <div class="form-group" style="flex-direction:row;align-items:center;gap:10px;padding-top:18px;">
+        <input type="checkbox" id="f-fake" style="width:auto;min-width:unset;">
+        <label for="f-fake" style="text-transform:none;font-size:12px;letter-spacing:0;">Fake Advert Flag</label>
+      </div>
+      <div class="form-group full"><label>Notes</label><textarea id="f-notes" rows="3"></textarea></div>
+      <div class="form-group full"><label>JSA Evidence Text</label><textarea id="f-jsa" rows="2"></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModalDirect()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveApplication()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── STATE ────────────────────────────────────────────────────────────────
+let currentPage = 1;
+let totalRecords = 0;
+const PER_PAGE = 50;
+let searchTimer = null;
+
+// ─── VIEW SWITCHER ────────────────────────────────────────────────────────
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'applications') loadApplications();
+  if (name === 'recruiters') loadRecruiters();
+  if (name === 'jsa') loadJSA();
+}
+
+// ─── TOAST ────────────────────────────────────────────────────────────────
+function toast(msg, type='success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + type;
+  setTimeout(() => el.className = 'toast', 3000);
+}
+
+// ─── STATUS BADGE ─────────────────────────────────────────────────────────
+function statusBadge(s) {
+  if (!s) return '<span class="badge badge-default">—</span>';
+  const map = {
+    'Applied':                          'badge-applied',
+    'Applied - Warm Contact':           'badge-warm',
+    'Applied via recruiter':            'badge-recruiter',
+    'Recruiter Call - Progressing':     'badge-rc-prog',
+    'Recruiter Call - Further Info Req':'badge-rc-info',
+    'Rejected':                         'badge-rejected',
+    'Ghosted':                          'badge-noresponse',
+    'No Response':                      'badge-noresponse',
+    'Interview Booked':                 'badge-interview',
+    '2nd Interview':                    'badge-interview',
+    'Offer':                            'badge-offer',
+    'Withdrawn':                        'badge-default',
+  };
+  return `<span class="badge ${map[s] || 'badge-default'}">${s}</span>`;
+}
+
+function ghostTierBadge(tier) {
+  if (!tier || tier === 'None') return '';
+  const map = {
+    'Medium':  'color:#f5d05a',
+    'High':    'color:var(--amber);font-weight:600',
+    'Certain': 'color:var(--red);font-weight:600',
+  };
+  const style = map[tier] || '';
+  return `<span style="font-size:10px;${style}"> &#9679; ${tier}</span>`;
+}
+
+
+function fmtDate(d) {
+  if (!d) return '';
+  return d.slice(0, 10).split('-').reverse().join('/');
+}
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const d = await fetch('/api/dashboard').then(r => r.json());
+  const s = d.stats;
+  document.getElementById('s-total').textContent = s.total_applied ?? 0;
+  document.getElementById('s-pending').textContent = s.pending ?? 0;
+  document.getElementById('s-rejected').textContent = s.rejections ?? 0;
+  document.getElementById('s-interviews').textContent = s.interviews ?? 0;
+  document.getElementById('s-ghosted').textContent = s.likely_ghosted ?? 0;
+  document.getElementById('s-fake').textContent = s.fake_adverts ?? 0;
+  document.getElementById('s-avgdays').textContent = s.avg_response_days ?? '—';
+  document.getElementById('badge-total').textContent = s.total_applied ?? 0;
+
+  renderBars('chart-status', d.by_status, 'status', 'cnt');
+  renderBars('chart-source', d.by_source, 'source', 'cnt');
+  renderBars('chart-week', d.by_week.map(r => ({...r, label: fmtDate(r.week)})), 'label', 'cnt');
+}
+
+function renderBars(elId, rows, labelKey, valKey) {
+  if (!rows || !rows.length) { document.getElementById(elId).innerHTML = '<div style="color:var(--muted);font-size:11px;padding:8px 0">No data</div>'; return; }
+  const max = Math.max(...rows.map(r => r[valKey]));
+  const el = document.getElementById(elId);
+  el.innerHTML = rows.map(r => `
+    <div class="bar-row">
+      <div class="bar-label" title="${r[labelKey]}">${r[labelKey] || '(blank)'}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(r[valKey]/max*100)}%"></div></div>
+      <div class="bar-count">${r[valKey]}</div>
+    </div>`).join('');
+}
+
+// ─── APPLICATIONS ─────────────────────────────────────────────────────────
+async function loadOptions() {
+  const opts = await fetch('/api/options').then(r => r.json());
+  const statusSel = document.getElementById('filter-status');
+  opts.statuses.forEach(s => { const o = new Option(s, s); statusSel.add(o); });
+  const sourceSel = document.getElementById('filter-source');
+  opts.sources.forEach(s => { const o = new Option(s, s); sourceSel.add(o); });
+  const locSel = document.getElementById('filter-loc');
+  opts.locations.forEach(l => { const o = new Option(l, l); locSel.add(o); });
+}
+
+async function loadApplications(resetPage=false) {
+  if (resetPage) currentPage = 1;
+  const search = document.getElementById('search-input').value;
+  const status = document.getElementById('filter-status').value;
+  const source = document.getElementById('filter-source').value;
+  const loc    = document.getElementById('filter-loc').value;
+  const params = new URLSearchParams({ search, status, source, location: loc, page: currentPage, per: PER_PAGE });
+  const data = await fetch('/api/applications?' + params).then(r => r.json());
+  totalRecords = data.total;
+
+  const tbody = document.getElementById('apps-tbody');
+  if (!data.rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty"><div class="empty-icon">&#128269;</div>No applications found</div></td></tr>';
+  } else {
+    tbody.innerHTML = data.rows.map(r => `
+      <tr>
+        <td>${r.urn ?? r.id}</td>
+        <td>${fmtDate(r.date_applied)}</td>
+        <td class="td-company">${r.company || ''}</td>
+        <td class="td-role" title="${r.role || ''}">${r.role || ''}</td>
+        <td>${r.source || ''}</td>
+        <td>${statusBadge(r.status)}${ghostTierBadge(r.ghost_risk_tier)}</td>
+        <td>${r.location_type || ''}</td>
+        <td>${r.salary || ''}</td>
+        <td class="td-actions">
+          ${r.job_url ? `<button class="icon-btn" title="Open URL" onclick="window.open('${r.job_url}','_blank')">&#127759;</button>` : ''}
+          ${(r.status === 'No Response' || r.status === 'Ghosted') ? '<button class="icon-btn" title="Restore - employer came back" onclick="openRestoreModal(' + r.id + ')" style="color:#d070d0">&#8635;</button>' : ''}
+          <button class="icon-btn" title="Edit" onclick="openEditModal(${r.id})">&#9998;</button>
+          <button class="icon-btn del" title="Delete" onclick="deleteApp(${r.id})">&#128465;</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  const start = (currentPage - 1) * PER_PAGE + 1;
+  const end = Math.min(currentPage * PER_PAGE, totalRecords);
+  document.getElementById('page-info').textContent = totalRecords ? `Showing ${start}–${end} of ${totalRecords}` : 'No results';
+  document.getElementById('btn-prev').disabled = currentPage <= 1;
+  document.getElementById('btn-next').disabled = currentPage * PER_PAGE >= totalRecords;
+}
+
+function changePage(dir) {
+  currentPage += dir;
+  loadApplications();
+}
+
+function debounceSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => loadApplications(true), 300);
+}
+
+// ─── MODAL ────────────────────────────────────────────────────────────────
+function openAddModal() {
+  document.getElementById('modal-title').textContent = 'Add Application';
+  document.getElementById('edit-id').value = '';
+  ['f-date','f-source','f-company','f-role','f-url','f-contact-name','f-contact-email',
+   'f-outcome-date','f-int1','f-int2','f-salary','f-ghost','f-notes','f-jsa'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el.tagName === 'SELECT') el.selectedIndex = 0;
+    else el.value = id === 'f-ghost' ? '0' : '';
+  });
+  document.getElementById('f-status').value = 'Applied';
+  document.getElementById('f-loc').value = '';
+  document.getElementById('f-fake').checked = false;
+  document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function openEditModal(id) {
+  const r = await fetch('/api/applications/' + id).then(res => res.json());
+  document.getElementById('modal-title').textContent = 'Edit Application';
+  document.getElementById('edit-id').value = id;
+  document.getElementById('f-date').value = r.date_applied || '';
+  document.getElementById('f-source').value = r.source || '';
+  document.getElementById('f-company').value = r.company || '';
+  document.getElementById('f-role').value = r.role || '';
+  document.getElementById('f-url').value = r.job_url || '';
+  document.getElementById('f-contact-name').value = r.contact_name || '';
+  document.getElementById('f-contact-email').value = r.contact_email || '';
+  document.getElementById('f-status').value = r.status || 'Applied';
+  document.getElementById('f-outcome-date').value = r.outcome_date || '';
+  document.getElementById('f-int1').value = r.interview1_date || '';
+  document.getElementById('f-int2').value = r.interview2_date || '';
+  document.getElementById('f-salary').value = r.salary || '';
+  document.getElementById('f-loc').value = r.location_type || '';
+  document.getElementById('f-ghost').value = r.ghost_score || 0;
+  document.getElementById('f-fake').checked = !!r.fake_advert;
+  document.getElementById('f-notes').value = r.notes || '';
+  document.getElementById('f-jsa').value = r.jsa_evidence || '';
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal(e) { if (e.target.id === 'modal-overlay') closeModalDirect(); }
+function closeModalDirect() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+async function saveApplication() {
+  const id = document.getElementById('edit-id').value;
+  const company  = document.getElementById('f-company').value.trim();
+  const role     = document.getElementById('f-role').value.trim();
+  const dateVal  = document.getElementById('f-date').value;
+  if (!company || !role || !dateVal) { toast('Company, Role and Date are required', 'error'); return; }
+
+  const jsaEl = document.getElementById('f-jsa');
+  let jsa = jsaEl.value.trim();
+  if (!jsa && company && role && dateVal) {
+    const d = dateVal.split('-').reverse().join('/');
+    jsa = `Applied to ${company} for ${role} on ${d}`;
+  }
+
+  const body = {
+    date_applied: dateVal,
+    source:       document.getElementById('f-source').value,
+    company,
+    role,
+    job_url:        document.getElementById('f-url').value,
+    contact_name:   document.getElementById('f-contact-name').value,
+    contact_email:  document.getElementById('f-contact-email').value,
+    status:         document.getElementById('f-status').value,
+    outcome_date:   document.getElementById('f-outcome-date').value || null,
+    interview1_date: document.getElementById('f-int1').value || null,
+    interview2_date: document.getElementById('f-int2').value || null,
+    salary:         document.getElementById('f-salary').value,
+    location_type:  document.getElementById('f-loc').value,
+    ghost_score:    parseInt(document.getElementById('f-ghost').value) || 0,
+    fake_advert:    document.getElementById('f-fake').checked,
+    notes:          document.getElementById('f-notes').value,
+    jsa_evidence:   jsa,
+  };
+
+  const method = id ? 'PUT' : 'POST';
+  const url    = id ? '/api/applications/' + id : '/api/applications';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (res.ok) {
+    closeModalDirect();
+    toast(id ? 'Application updated' : 'Application added');
+    loadApplications();
+    loadDashboard();
+  } else {
+    toast('Save failed', 'error');
+  }
+}
+
+async function deleteApp(id) {
+  if (!confirm('Delete this application?')) return;
+  const res = await fetch('/api/applications/' + id, { method: 'DELETE' });
+  if (res.ok) { toast('Deleted'); loadApplications(); loadDashboard(); }
+  else toast('Delete failed', 'error');
+}
+
+// ─── RECRUITERS ───────────────────────────────────────────────────────────
+let recruiterData = [];
+let recruiterSort = { col: null, dir: 'desc' };
+
+const TIER_ORDER = { 'Certain': 4, 'High': 3, 'Medium': 2, 'Low': 1, '—': 0, null: 0, undefined: 0 };
+
+async function loadRecruiters() {
+  recruiterData = await fetch('/api/recruiters').then(r => r.json());
+  renderRecruiters();
+}
+
+function sortRecruiters(col) {
+  if (recruiterSort.col === col) {
+    recruiterSort.dir = recruiterSort.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    recruiterSort.col = col;
+    recruiterSort.dir = 'desc';
+  }
+  // Update sort indicators
+  document.getElementById('sort-ghosted').innerHTML = '&#8597;';
+  document.getElementById('sort-risk').innerHTML = '&#8597;';
+  const activeId = col === 'ghosted_count' ? 'sort-ghosted' : 'sort-risk';
+  document.getElementById(activeId).innerHTML = recruiterSort.dir === 'desc' ? '&#8595;' : '&#8593;';
+  renderRecruiters();
+}
+
+function renderRecruiters() {
+  const riskClass = r => ({ 'Certain': 'risk-vh', 'Very High': 'risk-vh', 'High': 'risk-h', 'Medium': 'risk-m', 'Low': 'risk-l' }[r] || '');
+  let rows = [...recruiterData];
+
+  if (recruiterSort.col) {
+    rows.sort((a, b) => {
+      let aVal, bVal;
+      if (recruiterSort.col === 'ghosted_count') {
+        aVal = a.ghosted_count ?? 0;
+        bVal = b.ghosted_count ?? 0;
+      } else {
+        aVal = TIER_ORDER[a.ghost_risk_rating] ?? 0;
+        bVal = TIER_ORDER[b.ghost_risk_rating] ?? 0;
+      }
+      return recruiterSort.dir === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+  }
+
+  document.getElementById('rec-tbody').innerHTML = rows.map(r => `
+    <tr>
+      <td class="td-company">${r.company}</td>
+      <td>${r.total_applications}</td>
+      <td>${r.total_responses}</td>
+      <td>${r.response_rate_pct ?? 0}%</td>
+      <td>${r.avg_response_days ?? '—'}</td>
+      <td>${r.ghosted_count ?? 0}</td>
+      <td class="${riskClass(r.ghost_risk_rating)}">${r.ghost_risk_rating || '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="7"><div class="empty"><div class="empty-icon">&#128202;</div>No data</div></td></tr>';
+}
+
+// ─── JSA ──────────────────────────────────────────────────────────────────
+async function loadJSA() {
+  const week = document.getElementById('jsa-week').value;
+  const data = await fetch('/api/jsa' + (week ? '?week=' + week : '')).then(r => r.json());
+
+  // Populate week selector on first load
+  const sel = document.getElementById('jsa-week');
+  if (sel.options.length <= 1) {
+    data.weeks.forEach(w => {
+      const d = w.week ? w.week.slice(0,10) : '';
+      if (d) sel.add(new Option('w/c ' + fmtDate(d), d));
+    });
+  }
+
+  document.getElementById('jsa-count').textContent = `${data.rows.length} activities`;
+
+  function wc(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const mon = new Date(d.setDate(diff));
+    return mon.toLocaleDateString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric' });
+  }
+
+  const statusToOutcome = s => ({
+    'Applied': 'Awaiting Response',
+    'Applied - Warm Contact': 'Awaiting Response',
+    'Applied via recruiter': 'Awaiting Response',
+    'Rejected': 'Rejected', 'Offer': 'Offer Made',
+    'Interview Booked': 'Interview Arranged',
+  }[s] || 'Awaiting Response');
+
+  document.getElementById('jsa-tbody').innerHTML = data.rows.map(r => `
+    <tr>
+      <td>${wc(r.date_applied)}</td>
+      <td>${fmtDate(r.date_applied)}</td>
+      <td>${r.company || ''}</td>
+      <td class="td-role" title="${r.role||''}">${r.role||''}</td>
+      <td>${r.source||''}</td>
+      <td>${r.contact_name||''}</td>
+      <td>${statusToOutcome(r.status)}</td>
+      <td>${r.jsa_evidence||'Application confirmation email'}</td>
+    </tr>`).join('') || '<tr><td colspan="8"><div class="empty"><div class="empty-icon">&#128196;</div>No JSA records</div></td></tr>';
+}
+
+function downloadJSAPDF() {
+  const week     = document.getElementById('jsa-week').value;
+  const claimant = document.getElementById('jsa-claimant').value || 'Job Seeker';
+  const ni       = document.getElementById('jsa-ni').value || '';
+  const params   = new URLSearchParams({ week, claimant, ni });
+  window.open('/api/jsa/pdf?' + params, '_blank');
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────
+loadOptions();
+loadDashboard();
+</script>
+
+<!-- ══ RESTORE MODAL ══════════════════════════════════════════════════════ -->
+
+
+
+
+
+<!-- ══ RESTORE MODAL ══════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="restore-overlay" onclick="closeRestoreModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="width:480px">
+    <div class="modal-title" style="color:#d070d0">&#8635; Restore Application</div>
+    <div style="color:var(--muted);font-size:11px;margin-bottom:16px" id="restore-app-label"></div>
+    <input type="hidden" id="restore-app-id">
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Restore Status</label>
+        <select id="restore-status">
+          <option>Applied</option>
+          <option>Applied - Warm Contact</option>
+          <option>Applied via recruiter</option>
+          <option>Recruiter Call - Progressing</option>
+          <option>Recruiter Call - Further Info Req</option>
+          <option>Interview Booked</option>
+          <option>2nd Interview</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <label>Note (what happened / who got in touch)</label>
+        <textarea id="restore-note" rows="3" placeholder="e.g. Recruiter called 02/05/2026, progressing to interview stage"></textarea>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">
+      Ghost score will be reset to 0 and the note will be appended to the application record.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeRestoreModalDirect()">Cancel</button>
+      <button class="btn btn-primary" style="background:#d070d0;color:#0d0f14" onclick="saveRestore()">Restore</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── GHOST CHECK ──────────────────────────────────────────────────────────
+async function runGhostCheck() {
+  const res = await fetch('/api/ghost/check', { method: 'POST' });
+  const data = await res.json();
+  const t = data.tiers || {};
+  const parts = [];
+  if (t.Certain) parts.push(`${t.Certain} Certain`);
+  if (t.High)    parts.push(`${t.High} High`);
+  if (t.Medium)  parts.push(`${t.Medium} Medium`);
+  const tierStr = parts.length ? ` (${parts.join(', ')})` : '';
+  toast(`Ghost check done. Ghosted: ${data.total_ghosted}${tierStr}`);
+  loadApplications();
+  loadDashboard();
+}
+
+// ─── RESTORE ──────────────────────────────────────────────────────────────
+async function openRestoreModal(id) {
+  const r = await fetch('/api/applications/' + id).then(res => res.json());
+  document.getElementById('restore-app-id').value = id;
+  document.getElementById('restore-app-label').textContent = (r.company || '') + ' -- ' + (r.role || '');
+  document.getElementById('restore-note').value = '';
+  document.getElementById('restore-status').value = 'Applied';
+  document.getElementById('restore-overlay').classList.add('open');
+}
+
+function closeRestoreModal(e) { if (e.target.id === 'restore-overlay') closeRestoreModalDirect(); }
+function closeRestoreModalDirect() { document.getElementById('restore-overlay').classList.remove('open'); }
+
+async function saveRestore() {
+  const id = document.getElementById('restore-app-id').value;
+  const body = {
+    status: document.getElementById('restore-status').value,
+    note:   document.getElementById('restore-note').value,
+  };
+  const res = await fetch('/api/applications/' + id + '/restore', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  if (res.ok) {
+    closeRestoreModalDirect();
+    toast('Application restored');
+    loadApplications();
+    loadDashboard();
+  } else {
+    toast('Restore failed', 'error');
+  }
+}
+</script>
+
+</body>
+</html>
